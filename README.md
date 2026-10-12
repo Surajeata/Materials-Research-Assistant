@@ -130,6 +130,4 @@ Review individual test scripts before running them, especially any script that d
 - Add persistent cloud storage.
 - Expand end-to-end testing.
 
-## License
 
-No license has been selected for this project yet.
