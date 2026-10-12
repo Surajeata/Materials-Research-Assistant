@@ -1,4 +1,5 @@
 import streamlit as st
+import re
 
 from pathlib import Path
 
@@ -42,6 +43,29 @@ from src.rag import (
 
 )
 
+
+def remove_inline_page_citations(text):
+    """Remove inline page citations while preserving technical numbers."""
+    if not isinstance(text, str):
+        return text
+
+    text = re.sub(
+        r"\s*\(\s*pp?\.?\s*\d+(?:\s*[-–—]\s*\d+)?"
+        r"(?:\s*,\s*\d+(?:\s*[-–—]\s*\d+)?)*\s*\)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    text = re.sub(
+        r"\s*\(\s*Page\s+\d+(?:\s*[-–—]\s*\d+)?"
+        r"(?:\s*,\s*Page\s+\d+(?:\s*[-–—]\s*\d+)?)*\s*\)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    return text
 
 
 
@@ -568,7 +592,7 @@ if pdf_files:
 
             st.markdown(
 
-                summary
+                remove_inline_page_citations(summary)
 
             )
 
@@ -584,91 +608,46 @@ if pdf_files:
 
 
 
-            summary_documents = (
+            # Display summary sources grouped by document
+            summary_metadatas = summary_results.get("metadatas", [[]])[0] or []
+            summary_documents = summary_results.get("documents", [[]])[0] or []
 
-                summary_results[
+            grouped_summary_sources = {}
 
-                    "documents"
+            for i, metadata in enumerate(summary_metadatas):
+                metadata = metadata or {}
 
-                ][0]
+                source = metadata.get("source", "Unknown source")
+                page = metadata.get("page_number")
 
-            )
+                if source not in grouped_summary_sources:
+                    grouped_summary_sources[source] = set()
 
+                if page is not None:
+                    grouped_summary_sources[source].add(page)
 
+            if grouped_summary_sources:
+                st.header("Summary Sources")
 
+                for source, pages in grouped_summary_sources.items():
+                    with st.container(border=True):
+                        st.markdown(f"**{source}**")
 
+                        sorted_pages = sorted(
+                            pages,
+                            key=lambda p: (
+                                not isinstance(p, (int, float)),
+                                p if isinstance(p, (int, float)) else str(p),
+                            ),
+                        )
 
-            if summary_documents:
-
-
-
-                st.header(
-
-                    " Summary Sources"
-
-                )
-
-
-
-
-
-                for i in range(
-
-                    len(
-
-                        summary_results[
-
-                            "ids"
-
-                        ][0]
-
-                    )
-
-                ):
-
-
-
-                    metadata = (
-
-                        summary_results[
-
-                            "metadatas"
-
-                        ][0][i]
-
-                    )
-
-
-
-
-
-                    source = metadata[
-
-                        "source"
-
-                    ]
-
-
-
-                    page = metadata[
-
-                        "page_number"
-
-                    ]
-
-
-
-
-
-                    document = (
-
-                        summary_results[
-
-                            "documents"
-
-                        ][0][i]
-
-                    )
+                        if sorted_pages:
+                            page_text = ", ".join(
+                                str(page) for page in sorted_pages
+                            )
+                            st.caption(f"Relevant pages: {page_text}")
+                        else:
+                            st.caption("Page numbers unavailable")
 
 
 
@@ -679,81 +658,6 @@ if pdf_files:
                     # Create source preview
 
                     # ----------------------------------------
-
-
-
-                    preview = (
-
-                        document
-
-                        .replace(
-
-                            "\n",
-
-                            " "
-
-                        )
-
-                        .strip()
-
-                    )
-
-
-
-
-
-                    if len(preview) > 300:
-
-
-
-                        preview = (
-
-                            preview[:300]
-
-                            + "..."
-
-                        )
-
-
-
-
-
-                    st.markdown(
-
-                        f"""
-
-                        **Source {i + 1}**
-
-
-
-                        📄 **{source}**
-
-
-
-                        📖 **Page {page}**
-
-
-
-                       
-
-                        """
-
-                    )
-
-
-
-
-
-            else:
-
-
-
-                st.info(
-
-                    "No summary sources were retrieved."
-
-                )
-
 
 
 
@@ -946,123 +850,43 @@ if pdf_files:
 
 
 
-                st.header(
-
-                    " Method Evidence"
-
-                )
-
-
-
-                for i in range(
-
-                    len(
-
-                        method_results[
-
-                            "ids"
-
-                        ][0]
-
-                    )
-
-                ):
-
-
-
-                    metadata = (
-
-                        method_results[
-
-                            "metadatas"
-
-                        ][0][i]
-
-                    )
-
-
-
-                    source = metadata[
-
-                        "source"
-
-                    ]
-
-
-
-                    page = metadata[
-
-                        "page_number"
-
-                    ]
-
-
-
-                    document = (
-
-                        method_results[
-
-                            "documents"
-
-                        ][0][i]
-
-                    )
-
-
-
-                    preview = (
-
-                        document
-
-                        .replace(
-
-                            "\n",
-
-                            " "
-
-                        )
-
-                        .strip()
-
-                    )
-
-
-
-                    if len(preview) > 300:
-
-
-
-                        preview = (
-
-                            preview[:300]
-
-                            + "..."
-
-                        )
-
-
-
-                    st.markdown(
-
-                        f"""
-
-                        **Source {i + 1}**
-
-
-
-                        📄 **{source}**
-
-
-
-                        📖 **Page {page}**
-
-
-
-                        
-
-                        """
-
-                    )
+             
+                # Display grouped evidence sources
+                method_metadata = method_results.get("metadatas", [[]])[0]
+                grouped_method_sources = {}
+
+            for metadata in method_metadata:
+                metadata = metadata or {}
+                source = metadata.get("source", "Unknown source")
+                page = metadata.get("page_number")
+
+                if source not in grouped_method_sources:
+                    grouped_method_sources[source] = set()
+
+                if page is not None:
+                    grouped_method_sources[source].add(page)
+
+            if grouped_method_sources:
+                st.header("Sources")
+
+                for source, pages in grouped_method_sources.items():
+                    with st.container(border=True):
+                        st.markdown(f"**{source}**")
+
+                        if pages:
+                            sorted_pages = sorted(
+                                pages,
+                                key=lambda p: (
+                                    not isinstance(p, (int, float)),
+                                    p if isinstance(p, (int, float)) else str(p)
+                                )
+                            )
+                            page_text = ", ".join(
+                                str(page) for page in sorted_pages
+                            )
+                            st.caption(f"Relevant pages: {page_text}")
+                        else:
+                            st.caption("Page numbers unavailable")
 
 
 
@@ -1176,123 +1000,43 @@ if pdf_files:
 
 
 
-                st.header(
-
-                    " Material Evidence"
-
-                )
-
-
-
-                for i in range(
-
-                    len(
-
-                        material_results[
-
-                            "ids"
-
-                        ][0]
-
-                    )
-
-                ):
-
-
-
-                    metadata = (
-
-                        material_results[
-
-                            "metadatas"
-
-                        ][0][i]
-
-                    )
-
-
-
-                    source = metadata[
-
-                        "source"
-
-                    ]
-
-
-
-                    page = metadata[
-
-                        "page_number"
-
-                    ]
-
-
-
-                    document = (
-
-                        material_results[
-
-                            "documents"
-
-                        ][0][i]
-
-                    )
-
-
-
-                    preview = (
-
-                        document
-
-                        .replace(
-
-                            "\n",
-
-                            " "
-
-                        )
-
-                        .strip()
-
-                    )
-
-
-
-                    if len(preview) > 300:
-
-
-
-                        preview = (
-
-                            preview[:300]
-
-                            + "..."
-
-                        )
-
-
-
-                    st.markdown(
-
-                        f"""
-
-                        **Source {i + 1}**
-
-
-
-                        📄 **{source}**
-
-
-
-                        📖 **Page {page}**
-
-
-
-                        
-
-                        """
-
-                    )
+                
+            # Display grouped evidence sources
+             material_metadata = material_results.get("metadatas", [[]])[0]
+            grouped_material_sources = {}
+
+            for metadata in material_metadata:
+                metadata = metadata or {}
+                source = metadata.get("source", "Unknown source")
+                page = metadata.get("page_number")
+
+                if source not in grouped_material_sources:
+                    grouped_material_sources[source] = set()
+
+                if page is not None:
+                    grouped_material_sources[source].add(page)
+
+            if grouped_material_sources:
+                st.header("Sources")
+
+                for source, pages in grouped_material_sources.items():
+                    with st.container(border=True):
+                        st.markdown(f"**{source}**")
+
+                        if pages:
+                            sorted_pages = sorted(
+                                pages,
+                                key=lambda p: (
+                                    not isinstance(p, (int, float)),
+                                    p if isinstance(p, (int, float)) else str(p)
+                                )
+                            )
+                            page_text = ", ".join(
+                                str(page) for page in sorted_pages
+                            )
+                            st.caption(f"Relevant pages: {page_text}")
+                        else:
+                            st.caption("Page numbers unavailable")
 
 
 
@@ -1406,123 +1150,44 @@ if pdf_files:
 
 
 
-                st.header(
+                
+                # Group finding evidence by document
+                finding_metadata = finding_results.get("metadatas", [[]])[0]
+                grouped_finding_sources = {}
+
+                for metadata in finding_metadata:
+                    metadata = metadata or {}
+                    source = metadata.get("source", "Unknown source")
+                    page = metadata.get("page_number")
+
+                    if source not in grouped_finding_sources:
+                        grouped_finding_sources[source] = set()
+
+                    if page is not None:
+                        grouped_finding_sources[source].add(page)
+
+                if grouped_finding_sources:
+                    st.header("Sources")
+
+                    for source, pages in grouped_finding_sources.items():
+                        with st.container(border=True):
+                            st.markdown(f"**{source}**")
+
+                            if pages:
+                                sorted_pages = sorted(
+                                    pages,
+                                    key=lambda p: (
+                                        not isinstance(p, (int, float)),
+                                        p if isinstance(p, (int, float)) else str(p)
+                                    )
+                                )
+                                page_text = ", ".join(
+                                    str(page) for page in sorted_pages
+                                )
+                                st.caption(f"Relevant pages: {page_text}")
+                            else:
+                                st.caption("Page numbers unavailable")
 
-                    " Finding Evidence"
-
-                )
-
-
-
-                for i in range(
-
-                    len(
-
-                        finding_results[
-
-                            "ids"
-
-                        ][0]
-
-                    )
-
-                ):
-
-
-
-                    metadata = (
-
-                        finding_results[
-
-                            "metadatas"
-
-                        ][0][i]
-
-                    )
-
-
-
-                    source = metadata[
-
-                        "source"
-
-                    ]
-
-
-
-                    page = metadata[
-
-                        "page_number"
-
-                    ]
-
-
-
-                    document = (
-
-                        finding_results[
-
-                            "documents"
-
-                        ][0][i]
-
-                    )
-
-
-
-                    preview = (
-
-                        document
-
-                        .replace(
-
-                            "\n",
-
-                            " "
-
-                        )
-
-                        .strip()
-
-                    )
-
-
-
-                    if len(preview) > 300:
-
-
-
-                        preview = (
-
-                            preview[:300]
-
-                            + "..."
-
-                        )
-
-
-
-                    st.markdown(
-
-                        f"""
-
-                        **Source {i + 1}**
-
-
-
-                        📄 **{source}**
-
-
-
-                        📖 **Page {page}**
-
-
-
-                        
-
-                        """
-
-                    )
 
 
 
@@ -1636,123 +1301,44 @@ if pdf_files:
 
 
 
-                st.header(
+                
+                # Group research-gap evidence by document
+                gap_metadata = gap_results.get("metadatas", [[]])[0]
+                grouped_gap_sources = {}
+
+                for metadata in gap_metadata:
+                    metadata = metadata or {}
+                    source = metadata.get("source", "Unknown source")
+                    page = metadata.get("page_number")
+
+                    if source not in grouped_gap_sources:
+                        grouped_gap_sources[source] = set()
+
+                    if page is not None:
+                        grouped_gap_sources[source].add(page)
+
+                if grouped_gap_sources:
+                    st.header("Sources")
+
+                    for source, pages in grouped_gap_sources.items():
+                        with st.container(border=True):
+                            st.markdown(f"**{source}**")
+
+                            if pages:
+                                sorted_pages = sorted(
+                                    pages,
+                                    key=lambda p: (
+                                        not isinstance(p, (int, float)),
+                                        p if isinstance(p, (int, float)) else str(p)
+                                    )
+                                )
+                                page_text = ", ".join(
+                                    str(page) for page in sorted_pages
+                                )
+                                st.caption(f"Relevant pages: {page_text}")
+                            else:
+                                st.caption("Page numbers unavailable")
 
-                    " Gap Evidence"
-
-                )
-
-
-
-                for i in range(
-
-                    len(
-
-                        gap_results[
-
-                            "ids"
-
-                        ][0]
-
-                    )
-
-                ):
-
-
-
-                    metadata = (
-
-                        gap_results[
-
-                            "metadatas"
-
-                        ][0][i]
-
-                    )
-
-
-
-                    source = metadata[
-
-                        "source"
-
-                    ]
-
-
-
-                    page = metadata[
-
-                        "page_number"
-
-                    ]
-
-
-
-                    document = (
-
-                        gap_results[
-
-                            "documents"
-
-                        ][0][i]
-
-                    )
-
-
-
-                    preview = (
-
-                        document
-
-                        .replace(
-
-                            "\n",
-
-                            " "
-
-                        )
-
-                        .strip()
-
-                    )
-
-
-
-                    if len(preview) > 300:
-
-
-
-                        preview = (
-
-                            preview[:300]
-
-                            + "..."
-
-                        )
-
-
-
-                    st.markdown(
-
-                        f"""
-
-                        **Source {i + 1}**
-
-
-
-                        📄 **{source}**
-
-
-
-                        📖 **Page {page}**
-
-
-
-                        
-
-                        """
-
-                    )
 
 
 
@@ -1969,35 +1555,40 @@ if pdf_files:
 
                 if paper_a_documents:
 
-                    for i in range(
-                        len(paper_a_documents)
-                    ):
+                    
+                    # Group Paper A evidence by document
+                    grouped_paper_a_sources = {}
 
-                        metadata = paper_a_metadatas[i]
+                    for metadata in paper_a_metadatas:
+                        metadata = metadata or {}
+                        source = metadata.get("source", paper_a)
+                        page = metadata.get("page_number")
 
-                        source = metadata.get(
-                            "source",
-                            paper_a
-                        )
+                        if source not in grouped_paper_a_sources:
+                            grouped_paper_a_sources[source] = set()
 
-                        page = metadata.get(
-                            "page_number",
-                            "Unknown"
-                        )
+                        if page is not None:
+                            grouped_paper_a_sources[source].add(page)
 
-                        preview = paper_a_documents[i].strip()
+                    for source, pages in grouped_paper_a_sources.items():
+                        with st.container(border=True):
+                            st.markdown(f"**{source}**")
 
-                        st.markdown(
-                            f"""
-                **Source {i + 1}**
+                            if pages:
+                                sorted_pages = sorted(
+                                    pages,
+                                    key=lambda p: (
+                                        not isinstance(p, (int, float)),
+                                        p if isinstance(p, (int, float)) else str(p)
+                                    )
+                                )
+                                page_text = ", ".join(
+                                    str(page) for page in sorted_pages
+                                )
+                                st.caption(f"Relevant pages: {page_text}")
+                            else:
+                                st.caption("Page numbers unavailable")
 
-                📄 **{source}**
-
-                📖 **Page {page}**
-
-                > {preview}
-                """
-                        )
 
                 else:
 
@@ -2030,35 +1621,42 @@ if pdf_files:
 
                 if paper_b_documents:
 
-                    for i in range(
-                        len(paper_b_documents)
-                    ):
+                    
 
-                        metadata = paper_b_metadatas[i]
+               
+                    # Group Paper B evidence by document
+                    grouped_paper_b_sources = {}
 
-                        source = metadata.get(
-                            "source",
-                            paper_b
-                        )
+                    for metadata in paper_b_metadatas:
+                        metadata = metadata or {}
+                        source = metadata.get("source", paper_b)
+                        page = metadata.get("page_number")
 
-                        page = metadata.get(
-                            "page_number",
-                            "Unknown"
-                        )
+                        if source not in grouped_paper_b_sources:
+                            grouped_paper_b_sources[source] = set()
 
-                        preview = paper_b_documents[i].strip()
+                        if page is not None:
+                            grouped_paper_b_sources[source].add(page)
 
-                        st.markdown(
-                            f"""
-                **Source {i + 1}**
+                    for source, pages in grouped_paper_b_sources.items():
+                        with st.container(border=True):
+                            st.markdown(f"**{source}**")
 
-                📄 **{source}**
+                            if pages:
+                                sorted_pages = sorted(
+                                    pages,
+                                    key=lambda p: (
+                                        not isinstance(p, (int, float)),
+                                        p if isinstance(p, (int, float)) else str(p)
+                                    )
+                                )
+                                page_text = ", ".join(
+                                    str(page) for page in sorted_pages
+                                )
+                                st.caption(f"Relevant pages: {page_text}")
+                            else:
+                                st.caption("Page numbers unavailable")
 
-                📖 **Page {page}**
-
-                > {preview}
-                """
-                        )
 
                 else:
 
